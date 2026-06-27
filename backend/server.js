@@ -3,16 +3,15 @@ import cors from "cors";
 import multer from "multer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import dotenv from "dotenv";
-import { readFileSync } from "fs";
 import path from "path";
 
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080; // Uses Railway's port or 8080 locally
 
 // ── Middleware ──────────────────────────────────────────────────────────────
-app.use(cors());
+app.use(cors()); 
 app.use(express.json());
 
 // Serve frontend static files
@@ -30,7 +29,7 @@ const upload = multer({
 
 // ── Gemini setup ────────────────────────────────────────────────────────────
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
 // ── System prompt ───────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are Iron-Dome AI, an expert misinformation detection and deepfake analysis system specialized in the Cameroonian and broader African media context.
@@ -61,21 +60,31 @@ Rules:
 
 // ── Helper: call Gemini ─────────────────────────────────────────────────────
 async function analyzeWithGemini(parts) {
-  const result = await model.generateContent([SYSTEM_PROMPT, ...parts]);
-  const raw = result.response.text().trim();
-  // Strip markdown fences if model wraps response
-  const clean = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
-  return JSON.parse(clean);
+  try {
+    const result = await model.generateContent([SYSTEM_PROMPT, ...parts]);
+    const raw = result.response.text().trim();
+    const clean = raw.replace(/^```json\s*/i, "").replace(/```$/i, "").trim();
+    return JSON.parse(clean);
+  } catch (error) {
+    console.error("AI Analysis/Parsing Error:", error);
+    return {
+      verdict: "UNVERIFIABLE",
+      confidence: 0,
+      summary: "The AI was unable to parse the content or returned an invalid format.",
+      redFlags: ["Technical processing error"],
+      positiveSignals: [],
+      recommendation: "Please try again or check the input content.",
+      analysisType: "text"
+    };
+  }
 }
 
 // ── Routes ──────────────────────────────────────────────────────────────────
 
-// Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "ok", model: "gemini-1.5-flash", project: "Iron-Dome AI" });
 });
 
-// 1. Analyze text
 app.post("/api/analyze/text", async (req, res) => {
   try {
     const { content } = req.body;
@@ -84,6 +93,7 @@ app.post("/api/analyze/text", async (req, res) => {
 
     const parts = [`Analyze this text for misinformation:\n\n"${content}"`];
     const analysis = await analyzeWithGemini(parts);
+    analysis.analysisType = "text";
     res.json(analysis);
   } catch (err) {
     console.error("Text analysis error:", err.message);
@@ -91,24 +101,19 @@ app.post("/api/analyze/text", async (req, res) => {
   }
 });
 
-// 2. Analyze URL or YouTube link
 app.post("/api/analyze/url", async (req, res) => {
   try {
     const { url } = req.body;
     if (!url || !url.startsWith("http"))
       return res.status(400).json({ error: "Provide a valid URL starting with http/https." });
 
-    const isYouTube =
-      url.includes("youtube.com/watch") ||
-      url.includes("youtu.be/") ||
-      url.includes("youtube.com/shorts");
+    const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
 
     const prompt = isYouTube
       ? `Analyze this YouTube video for misinformation. Examine the video content, channel credibility, title claims, and any misleading narrative: ${url}`
       : `Analyze this webpage/article URL for misinformation. Examine the domain reputation, article content, source credibility, and factual accuracy: ${url}`;
 
     const analysis = await analyzeWithGemini([prompt]);
-    // Override analysisType based on detection
     analysis.analysisType = isYouTube ? "youtube" : "url";
     res.json(analysis);
   } catch (err) {
@@ -117,7 +122,6 @@ app.post("/api/analyze/url", async (req, res) => {
   }
 });
 
-// 3. Analyze image (deepfake / manipulation detection)
 app.post("/api/analyze/image", upload.single("image"), async (req, res) => {
   try {
     if (!req.file)
@@ -145,18 +149,13 @@ app.post("/api/analyze/image", upload.single("image"), async (req, res) => {
   }
 });
 
-// Fallback — serve frontend for any non-API route
 app.get("*", (req, res) => {
   res.sendFile(path.join(process.cwd(), "../frontend/public/index.html"));
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🛡️  Iron-Dome AI Backend running on http://localhost:${PORT}`);
+// UPDATED LINE: Added "0.0.0.0" for Railway compatibility
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`\n🛡️  Iron-Dome AI Backend running on http://0.0.0.0:${PORT}`);
   console.log(`   Model: gemini-1.5-flash`);
-  console.log(`   Endpoints:`);
-  console.log(`     GET  /api/health`);
-  console.log(`     POST /api/analyze/text`);
-  console.log(`     POST /api/analyze/url`);
-  console.log(`     POST /api/analyze/image\n`);
 });
