@@ -1,3 +1,4 @@
+import { YoutubeTranscript } from 'youtube-transcript';
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -110,10 +111,34 @@ app.post("/api/analyze/url", async (req, res) => {
       return res.status(400).json({ error: "Provide a valid URL starting with http/https." });
 
     const isYouTube = url.includes("youtube.com") || url.includes("youtu.be");
+    let prompt = "";
 
-    const prompt = isYouTube
-      ? `Analyze this YouTube video for misinformation. Examine the video content, channel credibility, title claims, and any misleading narrative: ${url}`
-      : `Analyze this webpage/article URL for misinformation. Examine the domain reputation, article content, source credibility, and factual accuracy: ${url}`;
+    if (isYouTube) {
+      console.log(`[V2] Extracting transcript for YouTube URL: ${url}`);
+      let transcriptText = "";
+      
+      try {
+        // Fetch transcript segments array
+        const transcriptObj = await YoutubeTranscript.fetchTranscript(url);
+        // Combine all text segments into a single readable paragraph
+        transcriptText = transcriptObj.map(segment => segment.text).join(" ");
+        console.log(`[V2] Successfully extracted ${transcriptText.length} characters of text.`);
+      } catch (transcriptError) {
+        console.warn("[V2] Could not fetch transcript (Closed captions might be disabled):", transcriptError.message);
+        transcriptText = "[No transcript available or captions are disabled for this video]";
+      }
+
+      prompt = `Analyze this YouTube video for misinformation. 
+Video Link: ${url}
+Extracted Transcript/Spoken Content:
+"${transcriptText}"
+
+Examine the video content, transcript accuracy, channel credibility, and any misleading narrative within the text.`;
+
+    } else {
+      // Standard URL logic remains unchanged
+      prompt = `Analyze this webpage/article URL for misinformation. Examine the domain reputation, article content, source credibility, and factual accuracy: ${url}`;
+    }
 
     const analysis = await analyzeWithGemini([prompt]);
     analysis.analysisType = isYouTube ? "youtube" : "url";
