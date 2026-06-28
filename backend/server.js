@@ -28,8 +28,9 @@ const upload = multer({
 });
 
 // ── Gemini setup ────────────────────────────────────────────────────────────
+// UPDATED: Changed model to gemini-2.0-flash
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
 // ── System prompt ───────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are Iron-Dome AI, an expert misinformation detection and deepfake analysis system specialized in the Cameroonian and broader African media context.
@@ -82,7 +83,8 @@ async function analyzeWithGemini(parts) {
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 app.get("/api/health", (req, res) => {
-  res.json({ status: "ok", model: "gemini-1.5-flash", project: "Iron-Dome AI" });
+  // UPDATED: Changed model display name
+  res.json({ status: "ok", model: "gemini-2.0-flash", project: "Iron-Dome AI" });
 });
 
 app.post("/api/analyze/text", async (req, res) => {
@@ -154,8 +156,8 @@ app.get("*", (req, res) => {
 });
 
 // ── Start ───────────────────────────────────────────────────────────────────
-// UPDATED LINE: Added "0.0.0.0" for Railway compatibility
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🛡️  Iron-Dome AI Backend running on http://0.0.0.0:${PORT}`);
-  console.log(`   Model: gemini-1.5-flash`);
+  // UPDATED: Changed console log model name
+  console.log(`   Model: gemini-2.0-flash`);
 });
